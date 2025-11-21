@@ -1,0 +1,7 @@
+{
+  "name": "SalgsTrener AI",
+  "description": "En AI-drevet treningspartner for selgere. Øv på salgssamtaler med realistiske personas.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
