@@ -33,7 +33,7 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
   const mountedRef = useRef(true);
 
   // Helper to update transcript smartly
-  const updateTranscript = useCallback((role: 'user' | 'model', text: string, isFinal: boolean = false) => {
+  const updateTranscript = useCallback((role: 'user' | 'model', text: string) => {
     setTranscript(prev => {
       const lastMsg = prev[prev.length - 1];
       // If the last message is from the same role, append/update it
@@ -124,8 +124,9 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio && audioContextRef.current) {
               const ctx = audioContextRef.current;
+              // Ensure context is running (sometimes browsers suspend it)
               if (ctx.state === 'suspended') {
-                  await ctx.resume();
+                  try { await ctx.resume(); } catch(e) { console.error(e); }
               }
               
               nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
@@ -171,7 +172,7 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
             console.error("Session error", err);
             if (mountedRef.current) {
                 setStatus('error');
-                setErrorMsg(err.message || "Tjenesten er utilgjengelig. Prøv igjen senere.");
+                setErrorMsg("Mistet kontakten med serveren. Sjekk internett eller prøv igjen.");
             }
           }
         }
@@ -188,23 +189,18 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
   useEffect(() => {
     mountedRef.current = true;
     
-    // Auto start only if not already connected
-    if (mode === CallMode.VOICE && status === 'idle') {
-       // Small delay to ensure component render
-       const timer = setTimeout(() => startSession(), 100);
-       return () => clearTimeout(timer);
-    }
+    // NOTE: Removed auto-start useEffect to prevent AudioContext issues.
+    // User must click "Start Samtale" to explicitly start.
 
     return () => {
       mountedRef.current = false;
       cleanup();
     };
-  }, [mode]);
+  }, []);
 
   const setupAudioInput = (stream: MediaStream) => {
     if (!audioContextRef.current) return;
     
-    // Create a separate context for input processing usually 16kHz
     const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     const source = inputCtx.createMediaStreamSource(stream);
     const processor = inputCtx.createScriptProcessor(4096, 1, 1);
@@ -218,21 +214,27 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
       let sum = 0;
       for(let i=0; i<inputData.length; i++) sum += inputData[i] * inputData[i];
       const rms = Math.sqrt(sum / inputData.length);
-      setVolumeLevel(Math.min(1, rms * 5)); // Amplify for visual
+      setVolumeLevel(Math.min(1, rms * 5)); 
 
-      const pcmBlob = createPCM16Blob(inputData);
-      
-      if (sessionPromiseRef.current) {
-          sessionPromiseRef.current.then(session => {
-              session.sendRealtimeInput({ media: pcmBlob });
-          });
+      // VAD (Voice Activity Detection) - Simple Gate
+      // Only send audio if volume is above threshold to prevent noise/echo loops
+      if (rms > 0.01) {
+          const pcmBlob = createPCM16Blob(inputData);
+          if (sessionPromiseRef.current) {
+              sessionPromiseRef.current.then(session => {
+                  try {
+                    session.sendRealtimeInput({ media: pcmBlob });
+                  } catch(e) {
+                      console.error("Failed to send input", e);
+                  }
+              });
+          }
       }
     };
 
     source.connect(processor);
-    processor.connect(inputCtx.destination); // Required for script processor to run
+    processor.connect(inputCtx.destination);
     
-    // Store refs for cleanup
     inputSourceRef.current = source as any; 
     processorRef.current = processor;
   };
@@ -269,7 +271,7 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
               <div className="text-red-500 text-6xl mb-6">⚠️</div>
               <h3 className="text-2xl font-bold mb-3 text-gray-800">Kunne ikke koble til samtale</h3>
               <p className="mb-6 text-gray-600 max-w-md">
-                  {errorMsg || "Vi fikk problemer med å koble til AI-serveren eller mikrofonen din."}
+                  {errorMsg}
               </p>
               <div className="flex space-x-4">
                   <button 
@@ -306,9 +308,10 @@ const CallInterface: React.FC<Props> = ({ persona, product, mode, onEndCall, onC
             {status === 'idle' && (
                 <button 
                     onClick={startSession}
-                    className="px-8 py-4 bg-green-600 text-white font-bold rounded-full text-lg hover:bg-green-700 transition-transform hover:scale-105 shadow-xl"
+                    className="px-8 py-4 bg-green-600 text-white font-bold rounded-full text-lg hover:bg-green-700 transition-transform hover:scale-105 shadow-xl flex items-center space-x-2"
                 >
-                    Start Samtale
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                    <span>Start Samtale</span>
                 </button>
             )}
         </div>

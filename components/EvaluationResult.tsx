@@ -50,8 +50,9 @@ const EvaluationResult: React.FC<Props> = ({ transcript, product, persona, onRes
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
             <h3 className="text-xl font-semibold mb-4">Total Score</h3>
-            <div className="relative w-48 h-48 flex items-center justify-center">
-               <div className="absolute inset-0 flex items-center justify-center flex-col">
+            {/* Added style with width and height to fix ResponsiveContainer warning */}
+            <div className="relative flex items-center justify-center" style={{ width: 192, height: 192 }}>
+               <div className="absolute inset-0 flex items-center justify-center flex-col z-10">
                   <span className="text-5xl font-bold text-gray-800">{evaluation.totalScore}</span>
                   <span className="text-sm text-gray-400">/ 100</span>
                </div>
@@ -64,6 +65,7 @@ const EvaluationResult: React.FC<Props> = ({ transcript, product, persona, onRes
                       startAngle={90}
                       endAngle={-270}
                       dataKey="value"
+                      stroke="none"
                     >
                       <Cell fill={evaluation.totalScore > 70 ? '#10B981' : evaluation.totalScore > 40 ? '#F59E0B' : '#EF4444'} />
                       <Cell fill="#F3F4F6" />
